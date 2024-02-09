@@ -10,7 +10,7 @@ in JupyterLab and the Jupyter Notebook. More specifically, Jupyter AI offers:
   This works anywhere the IPython kernel runs (JupyterLab, Jupyter Notebook, Google Colab, Kaggle, VSCode, etc.).
 * A native chat UI in JupyterLab that enables you to work with generative AI as a conversational assistant.
 * Support for a wide range of generative model providers, including AI21, Anthropic, AWS, Cohere,
-  Hugging Face, and OpenAI.
+  Hugging Face, NVIDIA, and OpenAI.
 * Local model support through GPT4All, enabling use of generative AI models on consumer grade machines
   with ease and privacy.
 
@@ -54,20 +54,21 @@ for details on installing and using Jupyter AI.
 
 If you want to install both the `%%ai` magic and the JupyterLab extension, you can run:
 
-    $ pip install jupyter_ai
+    $ pip install jupyter-ai
 
 If you are not using JupyterLab and you only want to install the Jupyter AI `%%ai` magic, you can run:
 
-    $ pip install jupyter_ai_magics
+    $ pip install jupyter-ai-magics
 
 
 ### With conda
 
 As an alternative to using `pip`, you can install `jupyter-ai` using
 [Conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)
-from the `conda-forge` channel:
+from the `conda-forge` channel, using one of the following two commands:
 
-    $ conda install -c conda-forge jupyter_ai
+    $ conda install -c conda-forge jupyter-ai  # or,
+    $ conda install conda-forge::jupyter-ai
 
 ## The `%%ai` magic command
 

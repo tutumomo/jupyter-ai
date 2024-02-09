@@ -160,7 +160,7 @@ class AiMagics(Magics):
         return output
 
     def _ai_inline_list_models_for_provider(self, provider_id, Provider):
-        output = ""
+        output = "<ul>"
 
         if len(Provider.models) == 1 and Provider.models[0] == "*":
             if Provider.help is None:
@@ -169,10 +169,9 @@ class AiMagics(Magics):
                 return Provider.help
 
         for model_id in Provider.models:
-            output += f", `{provider_id}:{model_id}`"
+            output += f"<li>`{provider_id}:{model_id}`</li>"
 
-        # Remove initial comma
-        return re.sub(r"^, ", "", output)
+        return output + "</ul>"
 
     # Is the required environment variable set?
     def _ai_env_status_for_provider_markdown(self, provider_id):
@@ -481,8 +480,13 @@ class AiMagics(Magics):
         if args.model_id in self.custom_model_registry and isinstance(
             self.custom_model_registry[args.model_id], LLMChain
         ):
+            # Get the output, either as raw text or as the contents of the 'text' key of a dict
+            invoke_output = self.custom_model_registry[args.model_id].invoke(prompt)
+            if isinstance(invoke_output, dict):
+                invoke_output = invoke_output.get("text")
+
             return self.display_output(
-                self.custom_model_registry[args.model_id].run(prompt),
+                invoke_output,
                 args.format,
                 {"jupyter_ai": {"custom_chain_id": args.model_id}},
             )

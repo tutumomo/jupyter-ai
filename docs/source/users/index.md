@@ -62,26 +62,26 @@ classes in their code.
 To install the JupyterLab extension, you can run:
 
 ```
-pip install jupyter_ai
+pip install jupyter-ai
 ```
 
-The latest major version of `jupyter_ai`, v2, only supports JupyterLab 4. If you
-need support for JupyterLab 3, you should install `jupyter_ai` v1 instead:
+The latest major version of `jupyter-ai`, v2, only supports JupyterLab 4. If you
+need support for JupyterLab 3, you should install `jupyter-ai` v1 instead:
 
 ```
-pip install jupyter_ai~=1.0
+pip install jupyter-ai~=1.0
 ```
 
 If you are not using JupyterLab and you only want to install the Jupyter AI `%%ai` magic, you can run:
 
 ```
-$ pip install jupyter_ai_magics
+$ pip install jupyter-ai-magics
 ```
 
-`jupyter_ai` depends on `jupyter_ai_magics`, so installing `jupyter_ai`
-automatically installs `jupyter_ai_magics`.
+`jupyter-ai` depends on `jupyter-ai-magics`, so installing `jupyter-ai`
+automatically installs `jupyter-ai-magics`.
 
-### Installation via `pip` within Conda environment (recommended)
+### Installation via `pip` or `conda` in a Conda environment (recommended)
 
 We highly recommend installing both JupyterLab and Jupyter AI within an isolated
 Conda environment to avoid clobbering Python packages in your existing Python
@@ -93,10 +93,11 @@ and create an environment that uses Python 3.11:
 
     $ conda create -n jupyter-ai python=3.11
     $ conda activate jupyter-ai
-    $ pip install jupyter_ai
 
-Then, follow the steps from "Requirements" and "Installation via `pip`" to
-install JupyterLab and Jupyter AI in this Conda environment.
+Then, use `conda` to install JupyterLab and Jupyter AI in this Conda environment.
+
+    $ conda install -c conda-forge jupyter-ai  # or,
+    $ conda install conda-forge::jupyter-ai
 
 When starting JupyterLab with Jupyter AI, make sure to activate the Conda
 environment first:
@@ -108,13 +109,21 @@ jupyter lab
 
 ## Uninstallation
 
-To remove the extension, run:
+If you installed Jupyter AI using `pip`, to remove the extension, run:
 
-    $ pip uninstall jupyter_ai
+    $ pip uninstall jupyter-ai
 
 or
 
-    $ pip uninstall jupyter_ai_magics
+    $ pip uninstall jupyter-ai-magics
+
+If you installed Jupyter AI using `conda`, you can remove it by running:
+
+    $ conda remove jupyter-ai
+
+or
+
+    $ conda remove jupyter-ai-magics
 
 ## Model providers
 
@@ -133,6 +142,7 @@ Jupyter AI supports the following model providers:
 | ERNIE-Bot           | `qianfan`            | `QIANFAN_AK`, `QIANFAN_SK` | `qianfan`                       |
 | GPT4All             | `gpt4all`            | N/A                        | `gpt4all`                       |
 | Hugging Face Hub    | `huggingface_hub`    | `HUGGINGFACEHUB_API_TOKEN` | `huggingface_hub`, `ipywidgets`, `pillow` |
+| NVIDIA              | `nvidia-chat`        | `NVIDIA_API_KEY`           | `langchain_nvidia_ai_endpoints` |
 | OpenAI              | `openai`             | `OPENAI_API_KEY`           | `openai`                        |
 | OpenAI (chat)       | `openai-chat`        | `OPENAI_API_KEY`           | `openai`                        |
 | SageMaker           | `sagemaker-endpoint` | N/A                        | `boto3`                         |
@@ -149,6 +159,8 @@ To use Bedrock models, you will need to authenticate via
 You need the `pillow` Python package to use Hugging Face Hub's text-to-image models.
 
 You can find a list of Hugging Face's models at [https://huggingface.co/models](https://huggingface.co/models).
+
+To use NVIDIA models, create a free account with the [NVIDIA NGC service](https://catalog.ngc.nvidia.com/), which hosts AI solution catalogs, containers, models, and more. Navigate to Catalog > [AI Foundation Models](https://catalog.ngc.nvidia.com/ai-foundation-models), and select a model with an API endpoint. Click "API" on the model's detail page, and click "Generate Key". Save this key, and set it as the environment variable `NVIDIA_API_KEY` to access any of the model endpoints.
 
 SageMaker endpoint names are created when you deploy a model. For more information, see
 ["Create your endpoint and deploy your model"](https://docs.aws.amazon.com/sagemaker/latest/dg/realtime-endpoints-deployment.html)
@@ -515,6 +527,7 @@ We currently support the following language model providers:
 - `bedrock-chat`
 - `cohere`
 - `huggingface_hub`
+- `nvidia-chat`
 - `openai`
 - `openai-chat`
 - `sagemaker-endpoint`
@@ -764,6 +777,28 @@ The `--response-path` option is a [JSONPath](https://goessner.net/articles/JsonP
 
 You can specify an allowlist, to only allow only a certain list of providers, or
 a blocklist, to block some providers.
+
+### Configuring default models and API keys
+
+This configuration allows for setting a default language and embedding models, and their corresponding API keys.
+These values are offered as a starting point for users, so they don't have to select the models and API keys, however,
+the selections they make in the settings panel will take precedence over these values.
+
+Specify default language model
+```bash
+jupyter lab --AiExtension.default_language_model=bedrock-chat:anthropic.claude-v2
+```
+
+Specify default embedding model
+```bash
+jupyter lab --AiExtension.default_embeddings_model=bedrock:amazon.titan-embed-text-v1
+```
+
+Specify default API keys
+```bash
+jupyter lab --AiExtension.default_api_keys={'OPENAI_API_KEY': 'sk-abcd'}
+```
+
 
 ### Blocklisting providers
 
