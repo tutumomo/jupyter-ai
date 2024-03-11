@@ -134,6 +134,8 @@ dev.sh
 .yarn
 
 .conda/
+/venv
+venv/
 
 # reserved for testing cookiecutter
 packages/jupyter-ai-test
