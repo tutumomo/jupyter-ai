@@ -134,8 +134,8 @@ Jupyter AI supports the following model providers:
 | Provider            | Provider ID          | Environment variable(s)    | Python package(s)               |
 |---------------------|----------------------|----------------------------|---------------------------------|
 | AI21                | `ai21`               | `AI21_API_KEY`             | `ai21`                          |
-| Anthropic           | `anthropic`          | `ANTHROPIC_API_KEY`        | `anthropic`                     |
-| Anthropic (chat)    | `anthropic-chat`     | `ANTHROPIC_API_KEY`        | `anthropic`                     |
+| Anthropic           | `anthropic`          | `ANTHROPIC_API_KEY`        | `langchain-anthropic`           |
+| Anthropic (chat)    | `anthropic-chat`     | `ANTHROPIC_API_KEY`        | `langchain-anthropic`           |
 | Bedrock             | `bedrock`            | N/A                        | `boto3`                         |
 | Bedrock (chat)      | `bedrock-chat`       | N/A                        | `boto3`                         |
 | Cohere              | `cohere`             | `COHERE_API_KEY`           | `cohere`                        |
@@ -144,8 +144,8 @@ Jupyter AI supports the following model providers:
 | GPT4All             | `gpt4all`            | N/A                        | `gpt4all`                       |
 | Hugging Face Hub    | `huggingface_hub`    | `HUGGINGFACEHUB_API_TOKEN` | `huggingface_hub`, `ipywidgets`, `pillow` |
 | NVIDIA              | `nvidia-chat`        | `NVIDIA_API_KEY`           | `langchain_nvidia_ai_endpoints` |
-| OpenAI              | `openai`             | `OPENAI_API_KEY`           | `openai`                        |
-| OpenAI (chat)       | `openai-chat`        | `OPENAI_API_KEY`           | `openai`                        |
+| OpenAI              | `openai`             | `OPENAI_API_KEY`           | `langchain-openai`              |
+| OpenAI (chat)       | `openai-chat`        | `OPENAI_API_KEY`           | `langchain-openai`              |
 | SageMaker           | `sagemaker-endpoint` | N/A                        | `boto3`                         |
 
 The environment variable names shown above are also the names of the settings keys used when setting up the chat interface.

@@ -22,10 +22,8 @@ from langchain.pydantic_v1 import BaseModel, Extra, root_validator
 from langchain.schema import LLMResult
 from langchain.utils import get_from_dict_or_env
 from langchain_community.chat_models import (
-    AzureChatOpenAI,
     BedrockChat,
     ChatAnthropic,
-    ChatOpenAI,
     QianfanChatEndpoint,
 )
 from langchain_community.llms import (
@@ -404,61 +402,6 @@ class AI21Provider(BaseProvider, AI21):
         return False
 
 
-class AnthropicProvider(BaseProvider, Anthropic):
-    id = "anthropic"
-    name = "Anthropic"
-    models = [
-        "claude-v1",
-        "claude-v1.0",
-        "claude-v1.2",
-        "claude-2",
-        "claude-2.0",
-        "claude-instant-v1",
-        "claude-instant-v1.0",
-        "claude-instant-v1.2",
-    ]
-    model_id_key = "model"
-    pypi_package_deps = ["anthropic"]
-    auth_strategy = EnvAuthStrategy(name="ANTHROPIC_API_KEY")
-
-    @property
-    def allows_concurrency(self):
-        return False
-
-    @classmethod
-    def is_api_key_exc(cls, e: Exception):
-        """
-        Determine if the exception is an Anthropic API key error.
-        """
-        import anthropic
-
-        if isinstance(e, anthropic.AuthenticationError):
-            return e.status_code == 401 and "Invalid API Key" in str(e)
-        return False
-
-
-class ChatAnthropicProvider(
-    BaseProvider, ChatAnthropic
-):  # https://docs.anthropic.com/claude/docs/models-overview
-    id = "anthropic-chat"
-    name = "ChatAnthropic"
-    models = [
-        "claude-2.0",
-        "claude-2.1",
-        "claude-instant-1.2",
-        "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229",
-        "claude-3-haiku-20240307",
-    ]
-    model_id_key = "model"
-    pypi_package_deps = ["anthropic"]
-    auth_strategy = EnvAuthStrategy(name="ANTHROPIC_API_KEY")
-
-    @property
-    def allows_concurrency(self):
-        return False
-
-
 class CohereProvider(BaseProvider, Cohere):
     id = "cohere"
     name = "Cohere"
@@ -630,97 +573,6 @@ class HfHubProvider(BaseProvider, HuggingFaceHub):
 
     async def _acall(self, *args, **kwargs) -> Coroutine[Any, Any, str]:
         return await self._call_in_executor(*args, **kwargs)
-
-
-class OpenAIProvider(BaseProvider, OpenAI):
-    id = "openai"
-    name = "OpenAI"
-    models = ["babbage-002", "davinci-002", "gpt-3.5-turbo-instruct"]
-    model_id_key = "model_name"
-    pypi_package_deps = ["openai"]
-    auth_strategy = EnvAuthStrategy(name="OPENAI_API_KEY")
-
-    @classmethod
-    def is_api_key_exc(cls, e: Exception):
-        """
-        Determine if the exception is an OpenAI API key error.
-        """
-        import openai
-
-        if isinstance(e, openai.AuthenticationError):
-            error_details = e.json_body.get("error", {})
-            return error_details.get("code") == "invalid_api_key"
-        return False
-
-
-class ChatOpenAIProvider(BaseProvider, ChatOpenAI):
-    id = "openai-chat"
-    name = "OpenAI"
-    models = [
-        "gpt-3.5-turbo",
-        "gpt-3.5-turbo-0125",
-        "gpt-3.5-turbo-0301",  # Deprecated as of 2024-06-13
-        "gpt-3.5-turbo-0613",  # Deprecated as of 2024-06-13
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo-16k",
-        "gpt-3.5-turbo-16k-0613",  # Deprecated as of 2024-06-13
-        "gpt-4",
-        "gpt-4-turbo-preview",
-        "gpt-4-0613",
-        "gpt-4-32k",
-        "gpt-4-32k-0613",
-        "gpt-4-0125-preview",
-        "gpt-4-1106-preview",
-    ]
-    model_id_key = "model_name"
-    pypi_package_deps = ["openai"]
-    auth_strategy = EnvAuthStrategy(name="OPENAI_API_KEY")
-
-    fields = [
-        TextField(
-            key="openai_api_base", label="Base API URL (optional)", format="text"
-        ),
-        TextField(
-            key="openai_organization", label="Organization (optional)", format="text"
-        ),
-        TextField(key="openai_proxy", label="Proxy (optional)", format="text"),
-    ]
-
-    @classmethod
-    def is_api_key_exc(cls, e: Exception):
-        """
-        Determine if the exception is an OpenAI API key error.
-        """
-        import openai
-
-        if isinstance(e, openai.AuthenticationError):
-            error_details = e.json_body.get("error", {})
-            return error_details.get("code") == "invalid_api_key"
-        return False
-
-
-class AzureChatOpenAIProvider(BaseProvider, AzureChatOpenAI):
-    id = "azure-chat-openai"
-    name = "Azure OpenAI"
-    models = ["*"]
-    model_id_key = "deployment_name"
-    model_id_label = "Deployment name"
-    pypi_package_deps = ["openai"]
-    auth_strategy = EnvAuthStrategy(name="AZURE_OPENAI_API_KEY")
-    registry = True
-
-    fields = [
-        TextField(
-            key="openai_api_base", label="Base API URL (required)", format="text"
-        ),
-        TextField(
-            key="openai_api_version", label="API version (required)", format="text"
-        ),
-        TextField(
-            key="openai_organization", label="Organization (optional)", format="text"
-        ),
-        TextField(key="openai_proxy", label="Proxy (optional)", format="text"),
-    ]
 
 
 class JsonContentHandler(LLMContentHandler):
