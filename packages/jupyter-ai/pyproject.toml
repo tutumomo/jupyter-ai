@@ -26,12 +26,13 @@ dependencies = [
     "jupyterlab~=4.0",
     "aiosqlite>=0.18",
     "importlib_metadata>=5.2.0",
-    "jupyter_ai_magics",
+    "jupyter_ai_magics>=2.13.0",
     "dask[distributed]",
     "faiss-cpu",                 # Not distributed by official repo
     "typing_extensions>=4.5.0",
     "traitlets>=5.0",
     "deepmerge>=1.0",
+    "pypdf==4.1.0",
 ]
 
 dynamic = ["version", "description", "authors", "urls", "keywords"]
