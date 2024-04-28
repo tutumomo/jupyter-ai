@@ -5,13 +5,24 @@ from pathlib import Path
 from typing import List
 
 import dask
+from langchain.document_loaders import PyPDFLoader
 from langchain.schema import Document
 from langchain.text_splitter import TextSplitter
 
 
+# Uses pypdf which is used by PyPDFLoader from langchain
+def pdf_to_text(path):
+    pages = PyPDFLoader(path)
+    text = "\n \n".join([page.page_content for page in pages.load_and_split()])
+    return text
+
+
 def path_to_doc(path):
     with open(str(path)) as f:
-        text = f.read()
+        if os.path.splitext(path)[1].lower() == ".pdf":
+            text = pdf_to_text(path)
+        else:
+            text = f.read()
         m = hashlib.sha256()
         m.update(text.encode("utf-8"))
         metadata = {"path": str(path), "sha256": m.digest(), "extension": path.suffix}
@@ -37,6 +48,8 @@ SUPPORTED_EXTS = {
     ".jsx",
     ".tsx",
     ".txt",
+    ".html",
+    ".pdf",
 }
 
 
@@ -51,21 +64,29 @@ def flatten(*chunk_lists):
 def split(path, all_files: bool, splitter):
     chunks = []
 
-    for dir, subdirs, filenames in os.walk(path):
-        # Filter out hidden filenames, hidden directories, and excluded directories,
-        # unless "all files" are requested
-        if not all_files:
-            subdirs[:] = [d for d in subdirs if not (d[0] == "." or d in EXCLUDE_DIRS)]
-            filenames = [f for f in filenames if not f[0] == "."]
+    # Check if the path points to a single file
+    if os.path.isfile(path):
+        filepaths = [Path(path)]
+    else:
+        filepaths = []
+        for dir, subdirs, filenames in os.walk(path):
+            # Filter out hidden filenames, hidden directories, and excluded directories,
+            # unless "all files" are requested
+            if not all_files:
+                subdirs[:] = [
+                    d for d in subdirs if not (d[0] == "." or d in EXCLUDE_DIRS)
+                ]
+                filenames = [f for f in filenames if not f[0] == "."]
+            filepaths += [Path(os.path.join(dir, filename)) for filename in filenames]
 
-        for filename in filenames:
-            filepath = Path(os.path.join(dir, filename))
-            if filepath.suffix not in SUPPORTED_EXTS:
-                continue
+    for filepath in filepaths:
+        # Lower case everything to make sure file extension comparisons are not case sensitive
+        if filepath.suffix.lower() not in {j.lower() for j in SUPPORTED_EXTS}:
+            continue
 
-            document = dask.delayed(path_to_doc)(filepath)
-            chunk = dask.delayed(split_document)(document, splitter)
-            chunks.append(chunk)
+        document = dask.delayed(path_to_doc)(filepath)
+        chunk = dask.delayed(split_document)(document, splitter)
+        chunks.append(chunk)
 
     flattened_chunks = dask.delayed(flatten)(*chunks)
     return flattened_chunks

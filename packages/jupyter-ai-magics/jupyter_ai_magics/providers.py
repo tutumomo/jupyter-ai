@@ -5,7 +5,17 @@ import functools
 import io
 import json
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, ClassVar, Coroutine, Dict, List, Literal, Optional, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    ClassVar,
+    Coroutine,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Union,
+)
 
 from jsonpath_ng import parse
 from langchain.chat_models.base import BaseChatModel
@@ -20,12 +30,12 @@ from langchain.prompts import (
 )
 from langchain.pydantic_v1 import BaseModel, Extra, root_validator
 from langchain.schema import LLMResult
+from langchain.schema.output_parser import StrOutputParser
+from langchain.schema.runnable import Runnable
 from langchain.utils import get_from_dict_or_env
 from langchain_community.chat_models import (
-    AzureChatOpenAI,
     BedrockChat,
     ChatAnthropic,
-    ChatOpenAI,
     QianfanChatEndpoint,
 )
 from langchain_community.llms import (
@@ -37,6 +47,7 @@ from langchain_community.llms import (
     HuggingFaceHub,
     OpenAI,
     SagemakerEndpoint,
+    Together,
 )
 
 # this is necessary because `langchain.pydantic_v1.main` does not include
@@ -47,6 +58,14 @@ try:
 except:
     from pydantic.main import ModelMetaclass
 
+from . import completion_utils as completion
+from .models.completion import (
+    InlineCompletionList,
+    InlineCompletionReply,
+    InlineCompletionRequest,
+    InlineCompletionStreamChunk,
+)
+from .models.persona import Persona
 
 CHAT_SYSTEM_PROMPT = """
 You are Jupyternaut, a conversational assistant living in JupyterLab to help users.
@@ -215,6 +234,30 @@ class BaseProvider(BaseModel, metaclass=ProviderMetaclass):
     """User inputs expected by this provider when initializing it. Each `Field` `f`
     should be passed in the constructor as a keyword argument, keyed by `f.key`."""
 
+    manages_history: ClassVar[bool] = False
+    """Whether this provider manages its own conversation history upstream. If
+    set to `True`, Jupyter AI will not pass the chat history to this provider
+    when invoked."""
+
+    persona: ClassVar[Optional[Persona]] = None
+    """
+    The **persona** of this provider, a struct that defines the name and avatar
+    shown on agent replies in the chat UI. When set to `None`, `jupyter-ai` will
+    choose a default persona when rendering agent messages by this provider.
+
+    Because this field is set to `None` by default, `jupyter-ai` will render a
+    default persona for all providers that are included natively with the
+    `jupyter-ai` package. This field is reserved for Jupyter AI modules that
+    serve a custom provider and want to distinguish it in the chat UI.
+    """
+
+    unsupported_slash_commands: ClassVar[set] = {}
+    """
+    A set of slash commands unsupported by this provider. Unsupported slash
+    commands are not shown in the help message, and cannot be used while this
+    provider is selected.
+    """
+
     #
     # instance attrs
     #
@@ -371,6 +414,71 @@ class BaseProvider(BaseModel, metaclass=ProviderMetaclass):
     def allows_concurrency(self):
         return True
 
+    async def generate_inline_completions(
+        self, request: InlineCompletionRequest
+    ) -> InlineCompletionReply:
+        chain = self._create_completion_chain()
+        model_arguments = completion.template_inputs_from_request(request)
+        suggestion = await chain.ainvoke(input=model_arguments)
+        suggestion = completion.post_process_suggestion(suggestion, request)
+        return InlineCompletionReply(
+            list=InlineCompletionList(items=[{"insertText": suggestion}]),
+            reply_to=request.number,
+        )
+
+    async def stream_inline_completions(
+        self, request: InlineCompletionRequest
+    ) -> AsyncIterator[InlineCompletionStreamChunk]:
+        chain = self._create_completion_chain()
+        token = completion.token_from_request(request, 0)
+        model_arguments = completion.template_inputs_from_request(request)
+        suggestion = ""
+
+        # send an incomplete `InlineCompletionReply`, indicating to the
+        # client that LLM output is about to streamed across this connection.
+        yield InlineCompletionReply(
+            list=InlineCompletionList(
+                items=[
+                    {
+                        # insert text starts empty as we do not pre-generate any part
+                        "insertText": "",
+                        "isIncomplete": True,
+                        "token": token,
+                    }
+                ]
+            ),
+            reply_to=request.number,
+        )
+
+        async for fragment in chain.astream(input=model_arguments):
+            suggestion += fragment
+            if suggestion.startswith("```"):
+                if "\n" not in suggestion:
+                    # we are not ready to apply post-processing
+                    continue
+                else:
+                    suggestion = completion.post_process_suggestion(suggestion, request)
+            elif suggestion.rstrip().endswith("```"):
+                suggestion = completion.post_process_suggestion(suggestion, request)
+            yield InlineCompletionStreamChunk(
+                type="stream",
+                response={"insertText": suggestion, "token": token},
+                reply_to=request.number,
+                done=False,
+            )
+
+        # finally, send a message confirming that we are done
+        yield InlineCompletionStreamChunk(
+            type="stream",
+            response={"insertText": suggestion, "token": token},
+            reply_to=request.number,
+            done=True,
+        )
+
+    def _create_completion_chain(self) -> Runnable:
+        prompt_template = self.get_completion_prompt_template()
+        return prompt_template | self | StrOutputParser()
+
 
 class AI21Provider(BaseProvider, AI21):
     id = "ai21"
@@ -400,61 +508,6 @@ class AI21Provider(BaseProvider, AI21):
         """
         if isinstance(e, ValueError):
             return "status code 401" in str(e)
-        return False
-
-
-class AnthropicProvider(BaseProvider, Anthropic):
-    id = "anthropic"
-    name = "Anthropic"
-    models = [
-        "claude-v1",
-        "claude-v1.0",
-        "claude-v1.2",
-        "claude-2",
-        "claude-2.0",
-        "claude-instant-v1",
-        "claude-instant-v1.0",
-        "claude-instant-v1.2",
-    ]
-    model_id_key = "model"
-    pypi_package_deps = ["anthropic"]
-    auth_strategy = EnvAuthStrategy(name="ANTHROPIC_API_KEY")
-
-    @property
-    def allows_concurrency(self):
-        return False
-
-    @classmethod
-    def is_api_key_exc(cls, e: Exception):
-        """
-        Determine if the exception is an Anthropic API key error.
-        """
-        import anthropic
-
-        if isinstance(e, anthropic.AuthenticationError):
-            return e.status_code == 401 and "Invalid API Key" in str(e)
-        return False
-
-
-class ChatAnthropicProvider(BaseProvider, ChatAnthropic):
-    id = "anthropic-chat"
-    name = "ChatAnthropic"
-    models = [
-        "claude-v1",
-        "claude-v1.0",
-        "claude-v1.2",
-        "claude-2",
-        "claude-2.0",
-        "claude-instant-v1",
-        "claude-instant-v1.0",
-        "claude-instant-v1.2",
-    ]
-    model_id_key = "model"
-    pypi_package_deps = ["anthropic"]
-    auth_strategy = EnvAuthStrategy(name="ANTHROPIC_API_KEY")
-
-    @property
-    def allows_concurrency(self):
         return False
 
 
@@ -631,94 +684,6 @@ class HfHubProvider(BaseProvider, HuggingFaceHub):
         return await self._call_in_executor(*args, **kwargs)
 
 
-class OpenAIProvider(BaseProvider, OpenAI):
-    id = "openai"
-    name = "OpenAI"
-    models = ["babbage-002", "davinci-002", "gpt-3.5-turbo-instruct"]
-    model_id_key = "model_name"
-    pypi_package_deps = ["openai"]
-    auth_strategy = EnvAuthStrategy(name="OPENAI_API_KEY")
-
-    @classmethod
-    def is_api_key_exc(cls, e: Exception):
-        """
-        Determine if the exception is an OpenAI API key error.
-        """
-        import openai
-
-        if isinstance(e, openai.AuthenticationError):
-            error_details = e.json_body.get("error", {})
-            return error_details.get("code") == "invalid_api_key"
-        return False
-
-
-class ChatOpenAIProvider(BaseProvider, ChatOpenAI):
-    id = "openai-chat"
-    name = "OpenAI"
-    models = [
-        "gpt-3.5-turbo",
-        "gpt-3.5-turbo-0301",  # Deprecated as of 2024-06-13
-        "gpt-3.5-turbo-0613",  # Deprecated as of 2024-06-13
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo-16k",
-        "gpt-3.5-turbo-16k-0613",  # Deprecated as of 2024-06-13
-        "gpt-4",
-        "gpt-4-0613",
-        "gpt-4-32k",
-        "gpt-4-32k-0613",
-        "gpt-4-1106-preview",
-    ]
-    model_id_key = "model_name"
-    pypi_package_deps = ["openai"]
-    auth_strategy = EnvAuthStrategy(name="OPENAI_API_KEY")
-
-    fields = [
-        TextField(
-            key="openai_api_base", label="Base API URL (optional)", format="text"
-        ),
-        TextField(
-            key="openai_organization", label="Organization (optional)", format="text"
-        ),
-        TextField(key="openai_proxy", label="Proxy (optional)", format="text"),
-    ]
-
-    @classmethod
-    def is_api_key_exc(cls, e: Exception):
-        """
-        Determine if the exception is an OpenAI API key error.
-        """
-        import openai
-
-        if isinstance(e, openai.AuthenticationError):
-            error_details = e.json_body.get("error", {})
-            return error_details.get("code") == "invalid_api_key"
-        return False
-
-
-class AzureChatOpenAIProvider(BaseProvider, AzureChatOpenAI):
-    id = "azure-chat-openai"
-    name = "Azure OpenAI"
-    models = ["*"]
-    model_id_key = "deployment_name"
-    model_id_label = "Deployment name"
-    pypi_package_deps = ["openai"]
-    auth_strategy = EnvAuthStrategy(name="OPENAI_API_KEY")
-    registry = True
-
-    fields = [
-        TextField(
-            key="openai_api_base", label="Base API URL (required)", format="text"
-        ),
-        TextField(
-            key="openai_api_version", label="API version (required)", format="text"
-        ),
-        TextField(
-            key="openai_organization", label="Organization (optional)", format="text"
-        ),
-        TextField(key="openai_proxy", label="Proxy (optional)", format="text"),
-    ]
-
-
 class JsonContentHandler(LLMContentHandler):
     content_type = "application/json"
     accepts = "application/json"
@@ -790,6 +755,7 @@ class SmEndpointProvider(BaseProvider, SagemakerEndpoint):
         return await self._call_in_executor(*args, **kwargs)
 
 
+# See model ID list here: https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
 class BedrockProvider(BaseProvider, Bedrock):
     id = "bedrock"
     name = "Amazon Bedrock"
@@ -818,14 +784,16 @@ class BedrockProvider(BaseProvider, Bedrock):
         return await self._call_in_executor(*args, **kwargs)
 
 
+# See model ID list here: https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
 class BedrockChatProvider(BaseProvider, BedrockChat):
     id = "bedrock-chat"
     name = "Amazon Bedrock Chat"
     models = [
-        "anthropic.claude-v1",
         "anthropic.claude-v2",
         "anthropic.claude-v2:1",
         "anthropic.claude-instant-v1",
+        "anthropic.claude-3-sonnet-20240229-v1:0",
+        "anthropic.claude-3-haiku-20240307-v1:0",
     ]
     model_id_key = "model_id"
     pypi_package_deps = ["boto3"]
@@ -848,6 +816,44 @@ class BedrockChatProvider(BaseProvider, BedrockChat):
     @property
     def allows_concurrency(self):
         return not "anthropic" in self.model_id
+
+
+class TogetherAIProvider(BaseProvider, Together):
+    id = "togetherai"
+    name = "Together AI"
+    model_id_key = "model"
+    models = [
+        "Austism/chronos-hermes-13b",
+        "DiscoResearch/DiscoLM-mixtral-8x7b-v2",
+        "EleutherAI/llemma_7b",
+        "Gryphe/MythoMax-L2-13b",
+        "Meta-Llama/Llama-Guard-7b",
+        "Nexusflow/NexusRaven-V2-13B",
+        "NousResearch/Nous-Capybara-7B-V1p9",
+        "NousResearch/Nous-Hermes-2-Yi-34B",
+        "NousResearch/Nous-Hermes-Llama2-13b",
+        "NousResearch/Nous-Hermes-Llama2-70b",
+    ]
+    pypi_package_deps = ["together"]
+    auth_strategy = EnvAuthStrategy(name="TOGETHER_API_KEY")
+
+    def __init__(self, **kwargs):
+        model = kwargs.get("model_id")
+
+        if model not in self.models:
+            kwargs["responses"] = [
+                "Model not supported! Please check model list with %ai list"
+            ]
+
+        super().__init__(**kwargs)
+
+    def get_prompt_template(self, format) -> PromptTemplate:
+        if format == "code":
+            return PromptTemplate.from_template(
+                "{prompt}\n\nProduce output as source code only, "
+                "with no text or explanation before or after it."
+            )
+        return super().get_prompt_template(format)
 
 
 # Baidu QianfanChat provider. temporarily living as a separate class until
